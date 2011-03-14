@@ -10,6 +10,6 @@ set -e
 
 unset RM
 
-./config --prefix="$SPKG_LOCAL"
+./config --prefix="$SPKG_LOCAL" -fPIC
 make
 make install
