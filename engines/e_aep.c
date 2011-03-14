@@ -57,12 +57,19 @@
 #include <string.h>
 
 #include <openssl/e_os2.h>
-#if !defined(OPENSSL_SYS_MSDOS) || defined(__DJGPP__)
+#if !defined(OPENSSL_SYS_MSDOS) || defined(__DJGPP__) || defined(__MINGW32__)
 #include <sys/types.h>
 #include <unistd.h>
 #else
 #include <process.h>
 typedef int pid_t;
+#endif
+
+#if defined(OPENSSL_SYS_NETWARE) && defined(NETWARE_CLIB)
+#define getpid GetThreadID
+extern int GetThreadID(void);
+#elif defined(_WIN32) && !defined(__WATCOMC__)
+#define getpid _getpid
 #endif
 
 #include <openssl/crypto.h>
@@ -862,11 +869,7 @@ static AEP_RV aep_get_connection(AEP_CONNECTION_HNDL_PTR phConnection)
 
 	CRYPTO_w_lock(CRYPTO_LOCK_ENGINE);
 
-#ifndef NETWARE_CLIB
 	curr_pid = getpid();
-#else
-	curr_pid = GetThreadID();
-#endif
 
 	/*Check if this is the first time this is being called from the current
 	  process*/

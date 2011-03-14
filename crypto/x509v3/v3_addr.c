@@ -61,7 +61,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
+
 #include "cryptlib.h"
 #include <openssl/conf.h>
 #include <openssl/asn1.h>
@@ -128,7 +128,7 @@ static int length_from_afi(const unsigned afi)
 /*
  * Extract the AFI from an IPAddressFamily.
  */
-unsigned v3_addr_get_afi(const IPAddressFamily *f)
+unsigned int v3_addr_get_afi(const IPAddressFamily *f)
 {
   return ((f != NULL &&
 	   f->addressFamily != NULL &&
@@ -147,7 +147,7 @@ static void addr_expand(unsigned char *addr,
 			const int length,
 			const unsigned char fill)
 {
-  assert(bs->length >= 0 && bs->length <= length);
+  OPENSSL_assert(bs->length >= 0 && bs->length <= length);
   if (bs->length > 0) {
     memcpy(addr, bs->data, bs->length);
     if ((bs->flags & 7) != 0) {
@@ -177,18 +177,26 @@ static int i2r_address(BIO *out,
   unsigned char addr[ADDR_RAW_BUF_LEN];
   int i, n;
 
+  if (bs->length < 0)
+    return 0;
   switch (afi) {
   case IANA_AFI_IPV4:
+    if (bs->length > 4)
+      return 0;
     addr_expand(addr, bs, 4, fill);
     BIO_printf(out, "%d.%d.%d.%d", addr[0], addr[1], addr[2], addr[3]);
     break;
   case IANA_AFI_IPV6:
+    if (bs->length > 16)
+      return 0;
     addr_expand(addr, bs, 16, fill);
     for (n = 16; n > 1 && addr[n-1] == 0x00 && addr[n-2] == 0x00; n -= 2)
       ;
     for (i = 0; i < n; i += 2)
       BIO_printf(out, "%x%s", (addr[i] << 8) | addr[i+1], (i < 14 ? ":" : ""));
     if (i < 16)
+      BIO_puts(out, ":");
+    if (i == 0)
       BIO_puts(out, ":");
     break;
   default:
@@ -234,7 +242,7 @@ static int i2r_IPAddressOrRanges(BIO *out,
 /*
  * i2r handler for an IPAddrBlocks extension.
  */
-static int i2r_IPAddrBlocks(X509V3_EXT_METHOD *method,
+static int i2r_IPAddrBlocks(const X509V3_EXT_METHOD *method,
 			    void *ext,
 			    BIO *out,
 			    int indent)
@@ -243,7 +251,7 @@ static int i2r_IPAddrBlocks(X509V3_EXT_METHOD *method,
   int i;
   for (i = 0; i < sk_IPAddressFamily_num(addr); i++) {
     IPAddressFamily *f = sk_IPAddressFamily_value(addr, i);
-    const unsigned afi = v3_addr_get_afi(f);
+    const unsigned int afi = v3_addr_get_afi(f);
     switch (afi) {
     case IANA_AFI_IPV4:
       BIO_printf(out, "%*sIPv4", indent, "");
@@ -313,8 +321,7 @@ static int IPAddressOrRange_cmp(const IPAddressOrRange *a,
 				const int length)
 {
   unsigned char addr_a[ADDR_RAW_BUF_LEN], addr_b[ADDR_RAW_BUF_LEN];
-  int prefixlen_a = 0;
-  int prefixlen_b = 0;
+  int prefixlen_a = 0, prefixlen_b = 0;
   int r;
 
   switch (a->type) {
@@ -453,7 +460,7 @@ static int make_addressRange(IPAddressOrRange **result,
   if ((aor = IPAddressOrRange_new()) == NULL)
     return 0;
   aor->type = IPAddressOrRange_addressRange;
-  assert(aor->u.addressRange == NULL);
+  OPENSSL_assert(aor->u.addressRange == NULL);
   if ((aor->u.addressRange = IPAddressRange_new()) == NULL)
     goto err;
   if (aor->u.addressRange->min == NULL &&
@@ -522,7 +529,7 @@ static IPAddressFamily *make_IPAddressFamily(IPAddrBlocks *addr,
 
   for (i = 0; i < sk_IPAddressFamily_num(addr); i++) {
     f = sk_IPAddressFamily_value(addr, i);
-    assert(f->addressFamily->data != NULL);
+    OPENSSL_assert(f->addressFamily->data != NULL);
     if (f->addressFamily->length == keylen &&
 	!memcmp(f->addressFamily->data, key, keylen))
       return f;
@@ -654,7 +661,7 @@ static void extract_min_max(IPAddressOrRange *aor,
 			    unsigned char *max,
 			    int length)
 {
-  assert(aor != NULL && min != NULL && max != NULL);
+  OPENSSL_assert(aor != NULL && min != NULL && max != NULL);
   switch (aor->type) {
   case IPAddressOrRange_addressPrefix:
     addr_expand(min, aor->u.addressPrefix, length, 0x00);
@@ -878,15 +885,16 @@ int v3_addr_canonize(IPAddrBlocks *addr)
 				    v3_addr_get_afi(f)))
       return 0;
   }
+  sk_IPAddressFamily_set_cmp_func(addr, IPAddressFamily_cmp);
   sk_IPAddressFamily_sort(addr);
-  assert(v3_addr_is_canonical(addr));
+  OPENSSL_assert(v3_addr_is_canonical(addr));
   return 1;
 }
 
 /*
  * v2i handler for the IPAddrBlocks extension.
  */
-static void *v2i_IPAddrBlocks(struct v3_ext_method *method,
+static void *v2i_IPAddrBlocks(const struct v3_ext_method *method,
 			      struct v3_ext_ctx *ctx,
 			      STACK_OF(CONF_VALUE) *values)
 {
@@ -1126,7 +1134,10 @@ int v3_addr_subset(IPAddrBlocks *a, IPAddrBlocks *b)
   for (i = 0; i < sk_IPAddressFamily_num(a); i++) {
     IPAddressFamily *fa = sk_IPAddressFamily_value(a, i);
     int j = sk_IPAddressFamily_find(b, fa);
-    IPAddressFamily *fb = sk_IPAddressFamily_value(b, j);
+    IPAddressFamily *fb;
+    fb = sk_IPAddressFamily_value(b, j);
+    if (fb == NULL)
+       return 0;
     if (!addr_contains(fb->ipAddressChoice->u.addressesOrRanges, 
 		       fa->ipAddressChoice->u.addressesOrRanges,
 		       length_from_afi(v3_addr_get_afi(fb))))
@@ -1161,11 +1172,11 @@ static int v3_addr_validate_path_internal(X509_STORE_CTX *ctx,
 {
   IPAddrBlocks *child = NULL;
   int i, j, ret = 1;
-  X509 *x = NULL;
+  X509 *x;
 
-  assert(chain != NULL && sk_X509_num(chain) > 0);
-  assert(ctx != NULL || ext != NULL);
-  assert(ctx == NULL || ctx->verify_cb != NULL);
+  OPENSSL_assert(chain != NULL && sk_X509_num(chain) > 0);
+  OPENSSL_assert(ctx != NULL || ext != NULL);
+  OPENSSL_assert(ctx == NULL || ctx->verify_cb != NULL);
 
   /*
    * Figure out where to start.  If we don't have an extension to
@@ -1174,10 +1185,11 @@ static int v3_addr_validate_path_internal(X509_STORE_CTX *ctx,
    */
   if (ext != NULL) {
     i = -1;
+    x = NULL;
   } else {
     i = 0;
     x = sk_X509_value(chain, i);
-    assert(x != NULL);
+    OPENSSL_assert(x != NULL);
     if ((ext = x->rfc3779_addr) == NULL)
       goto done;
   }
@@ -1196,7 +1208,7 @@ static int v3_addr_validate_path_internal(X509_STORE_CTX *ctx,
    */
   for (i++; i < sk_X509_num(chain); i++) {
     x = sk_X509_value(chain, i);
-    assert(x != NULL);
+    OPENSSL_assert(x != NULL);
     if (!v3_addr_is_canonical(x->rfc3779_addr))
       validation_err(X509_V_ERR_INVALID_EXTENSION);
     if (x->rfc3779_addr == NULL) {
@@ -1236,6 +1248,7 @@ static int v3_addr_validate_path_internal(X509_STORE_CTX *ctx,
   /*
    * Trust anchor can't inherit.
    */
+  OPENSSL_assert(x != NULL);
   if (x->rfc3779_addr != NULL) {
     for (j = 0; j < sk_IPAddressFamily_num(x->rfc3779_addr); j++) {
       IPAddressFamily *fp = sk_IPAddressFamily_value(x->rfc3779_addr, j);

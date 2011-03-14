@@ -182,7 +182,16 @@ RSA *RSA_new_method(ENGINE *engine)
 	ret->mt_blinding=NULL;
 	ret->bignum_data=NULL;
 	ret->flags=ret->meth->flags;
-	CRYPTO_new_ex_data(CRYPTO_EX_INDEX_RSA, ret, &ret->ex_data);
+	if (!CRYPTO_new_ex_data(CRYPTO_EX_INDEX_RSA, ret, &ret->ex_data))
+		{
+#ifndef OPENSSL_NO_ENGINE
+	if (ret->engine)
+		ENGINE_finish(ret->engine);
+#endif
+		OPENSSL_free(ret);
+		return(NULL);
+		}
+
 	if ((ret->meth->init != NULL) && !ret->meth->init(ret))
 		{
 #ifndef OPENSSL_NO_ENGINE
@@ -417,7 +426,7 @@ BN_BLINDING *RSA_setup_blinding(RSA *rsa, BN_CTX *in_ctx)
 		RSAerr(RSA_F_RSA_SETUP_BLINDING, ERR_R_BN_LIB);
 		goto err;
 		}
-	BN_BLINDING_set_thread_id(ret, CRYPTO_thread_id());
+	CRYPTO_THREADID_current(BN_BLINDING_thread_id(ret));
 err:
 	BN_CTX_end(ctx);
 	if (in_ctx == NULL)

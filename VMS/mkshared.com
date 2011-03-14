@@ -3,10 +3,10 @@ $!
 $! No command line parameters.  This should be run at the start of the source
 $! tree (the same directory where one finds INSTALL.VMS).
 $!
-$! Input:	[.UTIL]LIBEAY.NUM,[.AXP.EXE.CRYPTO]LIBCRYPTO.OLB
-$!		[.UTIL]SSLEAY.NUM,[.AXP.EXE.SSL]LIBSSL.OLB
-$! Output:	[.AXP.EXE.CRYPTO]LIBCRYPTO.OPT,.MAP,.EXE
-$!		[.AXP.EXE.SSL]LIBSSL.OPT,.MAP,.EXE
+$! Input:	[.UTIL]LIBEAY.NUM,[.xxx.EXE.CRYPTO]LIBCRYPTO.OLB
+$!		[.UTIL]SSLEAY.NUM,[.xxx.EXE.SSL]LIBSSL.OLB
+$! Output:	[.xxx.EXE.CRYPTO]LIBCRYPTO.OPT,.MAP,.EXE
+$!		[.xxx.EXE.SSL]LIBSSL.OPT,.MAP,.EXE
 $!
 $! So far, tests have only been made on VMS for Alpha.  VAX will come in time.
 $! ===========================================================================
@@ -19,31 +19,60 @@ $   write sys$error "ERROR: Couldn't find any library version info..."
 $   exit
 $ endif
 $
-$ if f$getsyi("CPU") .ge. 128
+$ if (f$getsyi("cpu").lt.128)
 $ then
+$     arch := VAX
+$ else
+$     arch = f$edit( f$getsyi( "ARCH_NAME"), "UPCASE")
+$     if (arch .eqs. "") then arch = "UNK"
+$ endif
+$
+$ if arch .nes. "VAX"
+$ then
+$   arch_vax = 0
 $   libid  = "Crypto"
 $   libnum = "[.UTIL]LIBEAY.NUM"
-$   libdir = "[.AXP.EXE.CRYPTO]"
+$   libdir = "[.''ARCH'.EXE.CRYPTO]"
 $   libolb = "''libdir'LIBCRYPTO.OLB"
 $   libopt = "''libdir'LIBCRYPTO.OPT"
 $   libmap = "''libdir'LIBCRYPTO.MAP"
 $   libgoal= "''libdir'LIBCRYPTO.EXE"
 $   libref = ""
-$   gosub create_axp_shr
+$   if f$search(libdir+libolb) .nes. "" then gosub create_nonvax_shr
 $   libid  = "SSL"
 $   libnum = "[.UTIL]SSLEAY.NUM"
-$   libdir = "[.AXP.EXE.SSL]"
+$   libdir = "[.''ARCH'.EXE.SSL]"
 $   libolb = "''libdir'LIBSSL.OLB"
 $   libopt = "''libdir'LIBSSL.OPT"
 $   libmap = "''libdir'LIBSSL.MAP"
 $   libgoal= "''libdir'LIBSSL.EXE"
-$   libref = "[.AXP.EXE.CRYPTO]LIBCRYPTO.EXE"
-$   gosub create_axp_shr
+$   libref = "[.''ARCH'.EXE.CRYPTO]LIBCRYPTO.EXE"
+$   if f$search(libdir+libolb) .nes. "" then gosub create_nonvax_shr
+$   arch_vax = 0
+$   libid  = "Crypto"
+$   libnum = "[.UTIL]LIBEAY.NUM"
+$   libdir = "[.''ARCH'.EXE.CRYPTO]"
+$   libolb = "''libdir'LIBCRYPTO32.OLB"
+$   libopt = "''libdir'LIBCRYPTO32.OPT"
+$   libmap = "''libdir'LIBCRYPTO32.MAP"
+$   libgoal= "''libdir'LIBCRYPTO32.EXE"
+$   libref = ""
+$   if f$search(libdir+libolb) .nes. "" then gosub create_nonvax_shr
+$   libid  = "SSL"
+$   libnum = "[.UTIL]SSLEAY.NUM"
+$   libdir = "[.''ARCH'.EXE.SSL]"
+$   libolb = "''libdir'LIBSSL32.OLB"
+$   libopt = "''libdir'LIBSSL32.OPT"
+$   libmap = "''libdir'LIBSSL32.MAP"
+$   libgoal= "''libdir'LIBSSL32.EXE"
+$   libref = "[.''ARCH'.EXE.CRYPTO]LIBCRYPTO32.EXE"
+$   if f$search(libdir+libolb) .nes. "" then gosub create_nonvax_shr
 $ else
+$   arch_vax = 1
 $   libtit = "CRYPTO_TRANSFER_VECTOR"
 $   libid  = "Crypto"
 $   libnum = "[.UTIL]LIBEAY.NUM"
-$   libdir = "[.VAX.EXE.CRYPTO]"
+$   libdir = "[.''ARCH'.EXE.CRYPTO]"
 $   libmar = "''libdir'LIBCRYPTO.MAR"
 $   libolb = "''libdir'LIBCRYPTO.OLB"
 $   libopt = "''libdir'LIBCRYPTO.OPT"
@@ -52,26 +81,26 @@ $   libmap = "''libdir'LIBCRYPTO.MAP"
 $   libgoal= "''libdir'LIBCRYPTO.EXE"
 $   libref = ""
 $   libvec = "LIBCRYPTO"
-$   gosub create_vax_shr
+$   if f$search(libdir+libolb) .nes. "" then gosub create_vax_shr
 $   libtit = "SSL_TRANSFER_VECTOR"
 $   libid  = "SSL"
 $   libnum = "[.UTIL]SSLEAY.NUM"
-$   libdir = "[.VAX.EXE.SSL]"
+$   libdir = "[.''ARCH'.EXE.SSL]"
 $   libmar = "''libdir'LIBSSL.MAR"
 $   libolb = "''libdir'LIBSSL.OLB"
 $   libopt = "''libdir'LIBSSL.OPT"
 $   libobj = "''libdir'LIBSSL.OBJ"
 $   libmap = "''libdir'LIBSSL.MAP"
 $   libgoal= "''libdir'LIBSSL.EXE"
-$   libref = "[.VAX.EXE.CRYPTO]LIBCRYPTO.EXE"
+$   libref = "[.''ARCH'.EXE.CRYPTO]LIBCRYPTO.EXE"
 $   libvec = "LIBSSL"
-$   gosub create_vax_shr
+$   if f$search(libdir+libolb) .nes. "" then gosub create_vax_shr
 $ endif
 $ exit
 $
-$! ----- Soubroutines to actually build the shareable libraries
-$! The way things work, there's a main shareable library creator for each
-$! supported architecture, which is called from the main code above.
+$! ----- Subroutines to build the shareable libraries
+$! For each supported architecture, there's a main shareable library
+$! creator, which is called from the main code above.
 $! The creator will define a number of variables to tell the next levels of
 $! subroutines what routines to use to write to the option files, call the
 $! main processor, read_func_num, and when that is done, it will write version
@@ -97,10 +126,10 @@ $! read_func_num depends on the following variables from the creator:
 $! libwriter	The name of the writer routine to call for each .num file line
 $! -----
 $
-$! ----- Subroutines for AXP
+$! ----- Subroutines for non-VAX
 $! -----
 $! The creator routine
-$ create_axp_shr:
+$ create_nonvax_shr:
 $   open/write opt 'libopt'
 $   write opt "identification=""",libid," ",libverstr,""""
 $   write opt libolb,"/lib"
@@ -108,7 +137,7 @@ $   if libref .nes. "" then write opt libref,"/SHARE"
 $   write opt "SYMBOL_VECTOR=(-"
 $   libfirstentry := true
 $   libwrch   := opt
-$   libwriter := write_axp_transfer_entry
+$   libwriter := write_nonvax_transfer_entry
 $   textcount = 0
 $   gosub read_func_num
 $   write opt ")"
@@ -118,7 +147,7 @@ $   link/map='libmap'/full/share='libgoal' 'libopt'/option
 $   return
 $
 $! The record writer routine
-$ write_axp_transfer_entry:
+$ write_nonvax_transfer_entry:
 $   if libentry .eqs. ".dummy" then return
 $   if info_kind .eqs. "VARIABLE"
 $   then
@@ -144,7 +173,7 @@ $   libfirstentry := false
 $   textcount = textcount + textcount_this
 $   return
 $
-$! ----- Subroutines for AXP
+$! ----- Subroutines for VAX
 $! -----
 $! The creator routine
 $ create_vax_shr:
@@ -264,8 +293,15 @@ $             truesum = truesum + 1
 $           if plat_entry .eqs. "!EXPORT_VAR_AS_FUNCTION" then -
 $             falsesum = falsesum + 1
 $         endif
-$         if plat_entry .eqs. "VMS" then truesum = truesum + 1
-$         if plat_entry .eqs. "!VMS" then falsesum = falsesum + 1
+$!
+$         if ((plat_entry .eqs. "VMS") .or. -
+            (arch_vax .and. (plat_entry .eqs. "VMSVAX"))) then -
+            truesum = truesum + 1
+$!
+$         if ((plat_entry .eqs. "!VMS") .or. -
+            (arch_vax .and. (plat_entry .eqs. "!VMSVAX"))) then -
+            falsesum = falsesum + 1
+$!
 $	  goto loop1
 $       endif
 $     endloop1:

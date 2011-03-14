@@ -12,6 +12,8 @@ B<openssl> B<s_server>
 [B<-context id>]
 [B<-verify depth>]
 [B<-Verify depth>]
+[B<-crl_check>]
+[B<-crl_check_all>]
 [B<-cert filename>]
 [B<-certform DER|PEM>]
 [B<-key keyfile>]
@@ -142,6 +144,12 @@ the client. With the B<-verify> option a certificate is requested but the
 client does not have to send one, with the B<-Verify> option the client
 must supply a certificate or an error occurs.
 
+=item B<-crl_check>, B<-crl_check_all>
+
+Check the peer certificate has not been revoked by its CA.
+The CRL(s) are appended to the certificate file. With the B<-crl_check_all>
+option all CRLs of all CAs in the chain are checked.
+
 =item B<-CApath directory>
 
 The directory to use for client certificate verification. This directory
@@ -182,6 +190,16 @@ this option translated a line feed from the terminal into CR+LF.
 =item B<-quiet>
 
 inhibit printing of session and certificate information.
+
+=item B<-psk_hint hint>
+
+Use the PSK identity hint B<hint> when using a PSK cipher suite.
+
+=item B<-psk key>
+
+Use the PSK key B<key> when using a PSK cipher suite. The key is
+given as a hexadecimal number without leading 0x, for example -psk
+1a2b3c4d.
 
 =item B<-ssl2>, B<-ssl3>, B<-tls1>, B<-no_ssl2>, B<-no_ssl3>, B<-no_tls1>
 
@@ -238,7 +256,7 @@ are part of the HTTP response line and headers must end with CRLF).
 
 =item B<-engine id>
 
-specifying an engine (by it's unique B<id> string) will cause B<s_server>
+specifying an engine (by its unique B<id> string) will cause B<s_server>
 to attempt to obtain a functional reference to the specified engine,
 thus initialising it if needed. The engine will then be set as the default
 for all available algorithms.
@@ -316,9 +334,6 @@ is strictly speaking a protocol violation, some SSL clients interpret this to
 mean any CA is acceptable. This is useful for debugging purposes.
 
 The session parameters can printed out using the B<sess_id> program.
-
-TLS extensions are only supported in OpenSSL 0.9.8 if they are explictly
-enabled at compile time using for example the B<enable-tlsext> switch.
 
 =head1 BUGS
 

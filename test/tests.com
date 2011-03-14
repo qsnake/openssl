@@ -6,11 +6,22 @@ $	__proc = f$element(0,";",f$environment("procedure"))
 $	__here = f$parse(f$parse("A.;",__proc) - "A.;","[]A.;") - "A.;"
 $	__save_default = f$environment("default")
 $	__arch := VAX
-$	if f$getsyi("cpu") .ge. 128 then __arch := AXP
+$	if f$getsyi("cpu") .ge. 128 then -
+	   __arch = f$edit( f$getsyi( "ARCH_NAME"), "UPCASE")
+$	if __arch .eqs. "" then __arch := UNK
 $	texe_dir := sys$disk:[-.'__arch'.exe.test]
 $	exe_dir := sys$disk:[-.'__arch'.exe.apps]
 $
 $	set default '__here'
+$
+$       ROOT = F$PARSE("sys$disk:[-]A.;0",,,,"SYNTAX_ONLY,NO_CONCEAL") - "A.;0"
+$       ROOT_DEV = F$PARSE(ROOT,,,"DEVICE","SYNTAX_ONLY")
+$       ROOT_DIR = F$PARSE(ROOT,,,"DIRECTORY","SYNTAX_ONLY") -
+                   - ".][000000" - "[000000." - "][" - "[" - "]"
+$       ROOT = ROOT_DEV + "[" + ROOT_DIR
+$       DEFINE/NOLOG SSLROOT 'ROOT'.APPS.] /TRANS=CONC
+$	openssl_conf := sslroot:[000000]openssl-vms.cnf
+$
 $	on control_y then goto exit
 $	on error then goto exit
 $
@@ -18,14 +29,18 @@ $	if p1 .nes. ""
 $	then
 $	    tests = p1
 $	else
+$! NOTE: This list reflects the list of dependencies following the
+$! "alltests" target in Makefile.  This should make it easy to see
+$! if there's a difference that needs to be taken care of.
 $	    tests := -
 	test_des,test_idea,test_sha,test_md4,test_md5,test_hmac,-
-	test_md2,test_mdc2,-
-	test_rmd,test_rc2,test_rc4,test_rc5,test_bf,test_cast,test_rd,-
+	test_md2,test_mdc2,test_wp,-
+	test_rmd,test_rc2,test_rc4,test_rc5,test_bf,test_cast,test_aes,-
 	test_rand,test_bn,test_ec,test_ecdsa,test_ecdh,-
 	test_enc,test_x509,test_rsa,test_crl,test_sid,-
 	test_gen,test_req,test_pkcs7,test_verify,test_dh,test_dsa,-
-	test_ss,test_ca,test_engine,test_evp,test_ssl
+	test_ss,test_ca,test_engine,test_evp,test_ssl,test_tsa,test_ige,-
+	test_jpake,test_cms
 $	endif
 $	tests = f$edit(tests,"COLLAPSE")
 $
@@ -43,6 +58,7 @@ $	MD2TEST :=	md2test
 $	MD4TEST :=	md4test
 $	MD5TEST :=	md5test
 $	HMACTEST :=	hmactest
+$	WPTEST :=	wp_test
 $	RC2TEST :=	rc2test
 $	RC4TEST :=	rc4test
 $	RC5TEST :=	rc5test
@@ -57,17 +73,21 @@ $	SSLTEST :=	ssltest
 $	RSATEST :=	rsa_test
 $	ENGINETEST :=	enginetest
 $	EVPTEST :=	evp_test
+$	IGETEST :=	igetest
+$	JPAKETEST :=	jpaketest
+$	ASN1TEST :=	asn1test
 $
 $	tests_i = 0
 $ loop_tests:
 $	tests_e = f$element(tests_i,",",tests)
 $	tests_i = tests_i + 1
 $	if tests_e .eqs. "," then goto exit
+$	write sys$output "---> ''tests_e'"
 $	gosub 'tests_e'
 $	goto loop_tests
 $
 $ test_evp:
-$	mcr 'texe_dir''evptest' evptests.txt
+$	mcr 'texe_dir''evptest' 'ROOT'.CRYPTO.EVP]evptests.txt
 $	return
 $ test_des:
 $	mcr 'texe_dir''destest'
@@ -90,6 +110,9 @@ $	mcr 'texe_dir''md4test'
 $	return
 $ test_hmac:
 $	mcr 'texe_dir''hmactest'
+$	return
+$ test_wp:
+$	mcr 'texe_dir''wptest'
 $	return
 $ test_md2:
 $	mcr 'texe_dir''md2test'
@@ -157,27 +180,57 @@ $	@tpkcs7d.com
 $	deassign sys$error
 $	return
 $ test_bn:
-$	write sys$output "starting big number library test, could take a while..."
-$	create bntest-vms.fdl
+$	write sys$output -
+	      "starting big number library test, could take a while..."
+$	set noon
+$	define sys$error nl:
+$	define sys$output nl:
+$	@ bctest.com
+$	status = $status
+$	deassign sys$error
+$	deassign sys$output
+$	on control_y then goto exit
+$	on error then goto exit
+$	if (status)
+$	then
+$	    create /fdl = sys$input bntest-vms.tmp
 FILE
 	ORGANIZATION	sequential
 RECORD
 	FORMAT		stream_lf
-$	create/fdl=bntest-vms.fdl bntest-vms.sh
-$	open/append foo bntest-vms.sh
-$	type/output=foo: sys$input:
+$	    define /user_mode sys$output bntest-vms.tmp
+$	    mcr 'texe_dir''bntest'
+$	    define /user_mode sys$input bntest-vms.tmp
+$	    define /user_mode sys$output bntest-vms.out
+$	    bc
+$	    @ bntest.com bntest-vms.out
+$	    status = $status
+$	    if (status)
+$	    then
+$		delete bntest-vms.out;*
+$		delete bntest-vms.tmp;*
+$	    endif
+$	else
+$	    create /fdl = sys$input bntest-vms.sh
+FILE
+	ORGANIZATION	sequential
+RECORD
+	FORMAT		stream_lf
+$	    open /append bntest_file bntest-vms.sh
+$	    type /output = bntest_file sys$input:
 << __FOO__ sh -c "`sh ./bctest`" | perl -e '$i=0; while (<STDIN>) {if (/^test (.*)/) {print STDERR "\nverify $1";} elsif (!/^0$/) {die "\nFailed! bc: $_";} else {print STDERR "."; $i++;}} print STDERR "\n$i tests passed\n"'
-$	define/user sys$output bntest-vms.tmp
-$	mcr 'texe_dir''bntest'
-$	copy bntest-vms.tmp foo:
-$	delete bntest-vms.tmp;*
-$	type/output=foo: sys$input:
+$	    define/user sys$output bntest-vms.tmp
+$	    mcr 'texe_dir''bntest'
+$	    copy bntest-vms.tmp bntest_file
+$	    delete bntest-vms.tmp;*
+$	    type /output = bntest_file sys$input:
 __FOO__
-$	close foo
-$	write sys$output "-- copy the [.test]bntest-vms.sh and [.test]bctest files to a Unix system and"
-$	write sys$output "-- run bntest-vms.sh through sh or bash to verify that the bignum operations"
-$	write sys$output "-- went well."
-$	write sys$output ""
+$	    close bntest_file
+$	    write sys$output "-- copy the [.test]bntest-vms.sh and [.test]bctest files to a Unix system and"
+$	    write sys$output "-- run bntest-vms.sh through sh or bash to verify that the bignum operations"
+$	    write sys$output "-- went well."
+$	    write sys$output ""
+$	endif
 $	write sys$output "test a^b%c implementations"
 $	mcr 'texe_dir''exptest'
 $	return
@@ -246,12 +299,41 @@ $	    write sys$output "Generate and certify a test certificate via the 'ca' pro
 $	    @testca.com
 $	endif
 $	return
-$ test_rd: 
-$	write sys$output "test Rijndael"
-$	!mcr 'texe_dir''rdtest'
+$ test_aes: 
+$!	write sys$output "test AES"
+$!	!mcr 'texe_dir''aestest'
+$	return
+$ test_tsa:
+$	set noon
+$	define/user sys$output nla0:
+$	mcr 'exe_dir'openssl no-rsa
+$	save_severity=$SEVERITY
+$	set on
+$	if save_severity
+$	then
+$	    write sys$output "skipping testtsa.com test -- requires RSA"
+$	else
+$	    @testtsa.com
+$	endif
+$	return
+$ test_ige: 
+$	write sys$output "Test IGE mode"
+$	mcr 'texe_dir''igetest'
+$	return
+$ test_jpake: 
+$	write sys$output "Test JPAKE"
+$	mcr 'texe_dir''jpaketest'
+$	return
+$ test_cms:
+$	write sys$output "CMS consistency test"
+$	! The following makes perl include the DCL symbol table in the env.
+$	define/user perl_env_tables clisym_local,lnm$file_dev,ctrl_env
+$	perl CMS-TEST.PL
 $	return
 $
 $
 $ exit:
+$	mcr 'exe_dir'openssl version -a
 $	set default '__save_default'
+$	deassign sslroot
 $	exit

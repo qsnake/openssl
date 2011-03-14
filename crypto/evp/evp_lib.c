@@ -159,6 +159,12 @@ int EVP_CIPHER_type(const EVP_CIPHER *ctx)
 
 		return NID_des_cfb64;
 
+		case NID_des_ede3_cfb64:
+		case NID_des_ede3_cfb8:
+		case NID_des_ede3_cfb1:
+
+		return NID_des_cfb64;
+
 		default:
 		/* Check it has an OID and it is valid */
 		otmp = OBJ_nid2obj(nid);
@@ -255,11 +261,23 @@ int EVP_MD_pkey_type(const EVP_MD *md)
 
 int EVP_MD_size(const EVP_MD *md)
 	{
+	if (!md)
+		{
+		EVPerr(EVP_F_EVP_MD_SIZE, EVP_R_MESSAGE_DIGEST_IS_NULL);
+		return -1;
+		}
 	return md->md_size;
 	}
 
-const EVP_MD * EVP_MD_CTX_md(const EVP_MD_CTX *ctx)
+unsigned long EVP_MD_flags(const EVP_MD *md)
 	{
+	return md->flags;
+	}
+
+const EVP_MD *EVP_MD_CTX_md(const EVP_MD_CTX *ctx)
+	{
+	if (!ctx)
+		return NULL;
 	return ctx->digest;
 	}
 
@@ -274,6 +292,21 @@ void EVP_MD_CTX_clear_flags(EVP_MD_CTX *ctx, int flags)
 	}
 
 int EVP_MD_CTX_test_flags(const EVP_MD_CTX *ctx, int flags)
+	{
+	return (ctx->flags & flags);
+	}
+
+void EVP_CIPHER_CTX_set_flags(EVP_CIPHER_CTX *ctx, int flags)
+	{
+	ctx->flags |= flags;
+	}
+
+void EVP_CIPHER_CTX_clear_flags(EVP_CIPHER_CTX *ctx, int flags)
+	{
+	ctx->flags &= ~flags;
+	}
+
+int EVP_CIPHER_CTX_test_flags(const EVP_CIPHER_CTX *ctx, int flags)
 	{
 	return (ctx->flags & flags);
 	}
