@@ -9,6 +9,7 @@ fi
 set -e
 
 unset RM
+unset MAKEFLAGS
 
 ./config --prefix="$SPKG_LOCAL" -fPIC
 make
