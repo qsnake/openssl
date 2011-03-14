@@ -11,6 +11,6 @@ set -e
 unset RM
 unset MAKEFLAGS
 
-./config --prefix="$SPKG_LOCAL" -fPIC
+./config --prefix="$SPKG_LOCAL" -fPIC --enable-shared
 make
 make install
