@@ -11,6 +11,12 @@ set -e
 unset RM
 unset MAKEFLAGS
 
-./config --prefix="$SPKG_LOCAL" -fPIC --shared
+# Make sure the libcrypto.so has non executable stack, see:
+# https://github.com/qsnake/qsnake/issues/11
+# This can either be achieved by passing "-Wa,--noexecstack" to the linker, but
+# this is difficult in the openssl buildsystem, so an easier option is to
+# forbid all assembler (which generates the executable stack by default) by
+# using the "no-asm" option. Then all libraries have non executable stack:
+./config --prefix="$SPKG_LOCAL" -fPIC --shared no-asm
 make
 make install
